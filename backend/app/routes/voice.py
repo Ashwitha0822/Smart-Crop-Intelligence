@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import tempfile
 from io import BytesIO
@@ -15,8 +16,7 @@ router = APIRouter(
     tags=["Voice Assistant"]
 )
 
-MODEL_SIZE = "base"
-
+MODEL_SIZE = "tiny"
 _model = None
 
 
@@ -36,78 +36,78 @@ def get_model():
 def decode_audio(file_path: str):
     container = av.open(file_path)
 
-    audio_stream = None
+    try:
+        audio_stream = next(
+            (
+                stream
+                for stream in container.streams
+                if stream.type == "audio"
+            ),
+            None
+        )
 
-    for stream in container.streams:
-        if stream.type == "audio":
-            audio_stream = stream
-            break
+        if audio_stream is None:
+            raise ValueError("No audio stream found.")
 
-    if audio_stream is None:
+        resampler = av.audio.resampler.AudioResampler(
+            format="s16",
+            layout="mono",
+            rate=16000
+        )
+
+        chunks = []
+
+        for frame in container.decode(audio_stream):
+            resampled_frames = resampler.resample(frame)
+
+            if not isinstance(resampled_frames, list):
+                resampled_frames = [resampled_frames]
+
+            for resampled in resampled_frames:
+                array = resampled.to_ndarray()
+
+                if array.ndim == 2:
+                    array = array[0]
+
+                chunks.append(array)
+
+        # Flush any buffered resampler samples.
+        remaining = resampler.resample(None)
+
+        if not isinstance(remaining, list):
+            remaining = [remaining]
+
+        for resampled in remaining:
+            if resampled is not None:
+                array = resampled.to_ndarray()
+
+                if array.ndim == 2:
+                    array = array[0]
+
+                chunks.append(array)
+
+        if not chunks:
+            raise ValueError("No audio samples found.")
+
+        audio = np.concatenate(chunks).astype(np.float32)
+        audio /= 32768.0
+
+        return audio
+
+    finally:
         container.close()
-        raise ValueError("No audio stream found.")
-
-    resampler = av.audio.resampler.AudioResampler(
-        format="s16",
-        layout="mono",
-        rate=16000
-    )
-
-    chunks = []
-
-    for frame in container.decode(audio_stream):
-        resampled_frames = resampler.resample(frame)
-
-        if not isinstance(resampled_frames, list):
-            resampled_frames = [resampled_frames]
-
-        for resampled in resampled_frames:
-            array = resampled.to_ndarray()
-
-            if array.ndim == 2:
-                array = array[0]
-
-            chunks.append(array)
-
-    container.close()
-
-    if not chunks:
-        raise ValueError("No audio samples found.")
-
-    audio = np.concatenate(chunks).astype(
-        np.float32
-    )
-
-    audio /= 32768.0
-
-    return audio
 
 
 def get_audio_stats(audio):
     duration = len(audio) / 16000
 
-    rms = float(
-        np.sqrt(
-            np.mean(
-                np.square(audio)
-            )
-        )
-    )
-
-    peak = float(
-        np.max(
-            np.abs(audio)
-        )
-    )
+    rms = float(np.sqrt(np.mean(np.square(audio))))
+    peak = float(np.max(np.abs(audio)))
 
     return duration, rms, peak
 
 
-def transcribe_audio(
-    model,
-    audio,
-    language=None
-):
+def transcribe_audio(model, audio, language=None):
     segments, info = model.transcribe(
         audio,
         language=language,
@@ -128,15 +128,11 @@ def transcribe_audio(
         if text:
             parts.append(text)
 
-    transcript = " ".join(parts).strip()
-
-    return transcript, info
+    return " ".join(parts).strip(), info
 
 
 @router.post("/transcribe")
-async def transcribe_voice(
-    file: UploadFile = File(...)
-):
+async def transcribe_voice(file: UploadFile = File(...)):
     if not file.content_type:
         raise HTTPException(
             status_code=400,
@@ -146,6 +142,9 @@ async def transcribe_voice(
     if not (
         file.content_type.startswith("audio/")
         or file.content_type.startswith("video/")
+        or file.filename
+        and Path(file.filename).suffix.lower()
+        in {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".mp4"}
     ):
         raise HTTPException(
             status_code=400,
@@ -160,13 +159,7 @@ async def transcribe_voice(
             detail="The audio recording is empty."
         )
 
-    suffix = (
-        Path(
-            file.filename or "voice.webm"
-        ).suffix
-        or ".webm"
-    )
-
+    suffix = Path(file.filename or "voice.webm").suffix or ".webm"
     temp_path = None
 
     try:
@@ -177,14 +170,8 @@ async def transcribe_voice(
             temp_file.write(contents)
             temp_path = temp_file.name
 
-        # ------------------------------------------------
-        # Decode browser WebM/Opus audio ourselves
-        # ------------------------------------------------
         audio = decode_audio(temp_path)
-
-        duration, rms, peak = get_audio_stats(
-            audio
-        )
+        duration, rms, peak = get_audio_stats(audio)
 
         print("\n========== AUDIO DEBUG ==========")
         print("Duration:", round(duration, 2), "seconds")
@@ -194,36 +181,27 @@ async def transcribe_voice(
         print("Content type:", file.content_type)
         print("=================================\n")
 
-        # ------------------------------------------------
-        # Reject silent / almost silent recordings
-        # ------------------------------------------------
         if duration < 0.8:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Recording is too short. "
-                    "Please speak for at least 2 seconds."
-                )
+                detail="Recording is too short. Please speak for at least 2 seconds."
             )
 
         if rms < 0.003 or peak < 0.02:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "The recording contains very little "
-                    "audible sound. Please check your "
-                    "microphone and speak closer to it."
+                    "The recording contains very little audible sound. "
+                    "Please check your microphone and speak closer to it."
                 )
             )
 
         model = get_model()
 
-        # ------------------------------------------------
-        # First pass: automatic language detection
-        # ------------------------------------------------
+        # Detect the language first.
+        # Transcription segments must be consumed for inference to run.
         detect_segments, detect_info = model.transcribe(
             audio,
-            language=None,
             task="transcribe",
             beam_size=1,
             temperature=0,
@@ -232,187 +210,73 @@ async def transcribe_voice(
             condition_on_previous_text=False
         )
 
-        detected_language = (
-            detect_info.language or "unknown"
-        )
+        # Consume the detection pass, then use its language metadata.
+        for _ in detect_segments:
+            pass
 
+        detected_language = detect_info.language or "unknown"
         language_probability = float(
             detect_info.language_probability or 0
         )
 
-        print(
-            "Detected language:",
-            detected_language
+        print("Detected language:", detected_language)
+        print("Language probability:", language_probability)
+
+        # Select Telugu when Whisper detects Telugu.
+        # Otherwise use English.
+        final_language = (
+            "te" if detected_language == "te" else "en"
         )
 
-        print(
-            "Language probability:",
-            language_probability
+        transcript, _ = transcribe_audio(
+            model,
+            audio,
+            language=final_language
         )
-
-        # ------------------------------------------------
-        # Short/uncertain recordings:
-        # explicitly test Telugu and English.
-        # ------------------------------------------------
-        if (
-            detected_language == "te"
-            and language_probability >= 0.75
-        ):
-            final_language = "te"
-
-            transcript, _ = transcribe_audio(
-                model,
-                audio,
-                language="te"
-            )
-
-        elif (
-            detected_language == "en"
-            and language_probability >= 0.90
-        ):
-            final_language = "en"
-
-            transcript, _ = transcribe_audio(
-                model,
-                audio,
-                language="en"
-            )
-
-        else:
-            telugu_transcript, _ = (
-                transcribe_audio(
-                    model,
-                    audio,
-                    language="te"
-                )
-            )
-
-            english_transcript, _ = (
-                transcribe_audio(
-                    model,
-                    audio,
-                    language="en"
-                )
-            )
-
-            print(
-                "Telugu candidate:",
-                telugu_transcript
-            )
-
-            print(
-                "English candidate:",
-                english_transcript
-            )
-
-            telugu_chars = sum(
-                1
-                for char in telugu_transcript
-                if "\u0C00" <= char <= "\u0C7F"
-            )
-
-            english_chars = sum(
-                1
-                for char in english_transcript
-                if char.isascii()
-                and char.isalpha()
-            )
-
-            # Strong Telugu-script evidence
-            if telugu_chars >= 2:
-                final_language = "te"
-                transcript = telugu_transcript
-
-            elif (
-                detected_language == "en"
-                and language_probability >= 0.75
-                and english_chars >= 5
-            ):
-                final_language = "en"
-                transcript = english_transcript
-               
-
-            elif detected_language == "te":
-                final_language = "te"
-                transcript = telugu_transcript
-
-            else:
-                final_language = "en"
-                transcript = english_transcript
 
         transcript = transcript.strip()
 
         if not transcript:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "No clear speech was detected. "
-                    "Please speak again."
-                )
+                detail="No clear speech was detected. Please speak again."
             )
 
-        # ------------------------------------------------
-        # Reject obvious Whisper hallucination
-        # ------------------------------------------------
-        if final_language == "te":
-            language_name = "Telugu"
-            response_language = "te"
-
-        else:
-            language_name = "English"
-            response_language = "en"
+        language_name = (
+            "Telugu" if final_language == "te" else "English"
+        )
 
         return {
             "success": True,
             "transcript": transcript,
             "detected_language": final_language,
             "language_name": language_name,
-            "response_language": response_language,
-            "language_probability": round(
-                language_probability,
-                4
-            ),
-            "audio_duration": round(
-                duration,
-                2
-            ),
-            "audio_rms": round(
-                rms,
-                6
-            ),
-            "audio_peak": round(
-                peak,
-                6
-            )
+            "response_language": final_language,
+            "language_probability": round(language_probability, 4),
+            "audio_duration": round(duration, 2),
+            "audio_rms": round(rms, 6),
+            "audio_peak": round(peak, 6)
         }
 
     except HTTPException:
         raise
 
     except Exception as exc:
-        print(
-            "VOICE TRANSCRIPTION ERROR:",
-            repr(exc)
-        )
+        print("VOICE TRANSCRIPTION ERROR:", repr(exc))
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Voice transcription failed."
-            )
+            detail="Voice transcription failed."
         )
 
     finally:
         if temp_path:
             try:
-                Path(temp_path).unlink(
-                    missing_ok=True
-                )
+                Path(temp_path).unlink(missing_ok=True)
             except Exception:
                 pass
 
-# Text-to-speech request model. POST is used so long Telugu answers are not
-# placed in the URL, which can exceed browser/server URL length limits.
+
 class SpeakRequest(BaseModel):
     text: str
     language: str = "te"
@@ -423,24 +287,39 @@ def _make_speech_response(text: str, language: str):
     clean_language = (language or "te").strip().lower()
 
     if not clean_text:
-        raise HTTPException(status_code=400, detail="Text is required.")
+        raise HTTPException(
+            status_code=400,
+            detail="Text is required."
+        )
 
     if clean_language not in {"te", "en"}:
         raise HTTPException(
             status_code=400,
-            detail="Supported languages are Telugu and English.",
+            detail="Supported languages are Telugu and English."
         )
 
     try:
         audio_buffer = BytesIO()
-        gTTS(text=clean_text, lang=clean_language, slow=False).write_to_fp(audio_buffer)
+
+        gTTS(
+            text=clean_text,
+            lang=clean_language,
+            slow=False
+        ).write_to_fp(audio_buffer)
+
         audio_buffer.seek(0)
-        return StreamingResponse(audio_buffer, media_type="audio/mpeg")
+
+        return StreamingResponse(
+            audio_buffer,
+            media_type="audio/mpeg"
+        )
+
     except Exception as exc:
         print("TEXT-TO-SPEECH ERROR:", repr(exc))
+
         raise HTTPException(
             status_code=502,
-            detail="Could not generate speech. Check your internet connection.",
+            detail="Could not generate speech. Check your internet connection."
         )
 
 
@@ -449,7 +328,6 @@ async def speak_text(data: SpeakRequest):
     return _make_speech_response(data.text, data.language)
 
 
-# Keep the GET endpoint too, so the short browser test URL used earlier still works.
 @router.get("/speak")
 async def speak_text_get(text: str, language: str = "te"):
     return _make_speech_response(text, language)
