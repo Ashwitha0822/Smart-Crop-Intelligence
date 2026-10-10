@@ -31,12 +31,14 @@ DATABASE_URL = URL.create(
     host=DB_HOST,
     port=DB_PORT,
     database=DB_NAME,
-    query={"ssl": "true"} if DB_HOST.endswith("aivencloud.com") else {},
 )
+
+connect_args = {"ssl": {}} if DB_HOST.endswith("aivencloud.com") else {}
 
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(
