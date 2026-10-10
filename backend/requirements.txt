@@ -23,6 +23,6 @@ gTTS
 deep-translator
 pyproj
 tavily-python
-
+httpx
 av
 faster-whisper
