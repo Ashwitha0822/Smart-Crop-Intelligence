@@ -15,7 +15,7 @@ router = APIRouter(
     tags=["Voice Assistant"]
 )
 
-MODEL_SIZE = "large-v3"
+MODEL_SIZE = "small"
 
 _model = None
 
@@ -112,8 +112,8 @@ def transcribe_audio(
         audio,
         language=language,
         task="transcribe",
-        beam_size=5,
-        best_of=5,
+        beam_size=1,
+        best_of=1,
         temperature=0,
         vad_filter=True,
         without_timestamps=True,
