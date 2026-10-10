@@ -24,11 +24,13 @@ def get_model():
     global _model
 
     if _model is None:
+        print("Loading Whisper model...")
         _model = WhisperModel(
             MODEL_SIZE,
             device="cpu",
             compute_type="int8"
         )
+        print("Whisper model loaded successfully.")
 
     return _model
 
@@ -64,6 +66,9 @@ def decode_audio(file_path: str):
                 resampled_frames = [resampled_frames]
 
             for resampled in resampled_frames:
+                if resampled is None:
+                    continue
+
                 array = resampled.to_ndarray()
 
                 if array.ndim == 2:
@@ -71,20 +76,22 @@ def decode_audio(file_path: str):
 
                 chunks.append(array)
 
-        # Flush any buffered resampler samples.
+        # Flush any remaining resampler samples.
         remaining = resampler.resample(None)
 
         if not isinstance(remaining, list):
             remaining = [remaining]
 
         for resampled in remaining:
-            if resampled is not None:
-                array = resampled.to_ndarray()
+            if resampled is None:
+                continue
 
-                if array.ndim == 2:
-                    array = array[0]
+            array = resampled.to_ndarray()
 
-                chunks.append(array)
+            if array.ndim == 2:
+                array = array[0]
+
+            chunks.append(array)
 
         if not chunks:
             raise ValueError("No audio samples found.")
@@ -99,18 +106,20 @@ def decode_audio(file_path: str):
 
 
 def get_audio_stats(audio):
-    duration = len(audio) / 16000
+    if len(audio) == 0:
+        return 0.0, 0.0, 0.0
 
+    duration = len(audio) / 16000
     rms = float(np.sqrt(np.mean(np.square(audio))))
     peak = float(np.max(np.abs(audio)))
 
     return duration, rms, peak
 
 
-def transcribe_audio(model, audio, language=None):
+def transcribe_audio(model, audio):
+    # One pass: detect the language and transcribe together.
     segments, info = model.transcribe(
         audio,
-        language=language,
         task="transcribe",
         beam_size=1,
         best_of=1,
@@ -122,29 +131,37 @@ def transcribe_audio(model, audio, language=None):
 
     parts = []
 
+    # Inference runs as the segments are consumed.
     for segment in segments:
         text = segment.text.strip()
 
         if text:
             parts.append(text)
 
-    return " ".join(parts).strip(), info
+    transcript = " ".join(parts).strip()
+    detected_language = info.language or "unknown"
+    language_probability = float(
+        info.language_probability or 0
+    )
+
+    return transcript, detected_language, language_probability
 
 
 @router.post("/transcribe")
 async def transcribe_voice(file: UploadFile = File(...)):
-    if not file.content_type:
-        raise HTTPException(
-            status_code=400,
-            detail="Audio file is required."
-        )
+    filename = file.filename or "voice.webm"
+    suffix = Path(filename).suffix.lower()
+
+    supported_extensions = {
+        ".webm", ".wav", ".mp3", ".m4a", ".ogg", ".mp4"
+    }
+
+    content_type = file.content_type or ""
 
     if not (
-        file.content_type.startswith("audio/")
-        or file.content_type.startswith("video/")
-        or file.filename
-        and Path(file.filename).suffix.lower()
-        in {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".mp4"}
+        content_type.startswith("audio/")
+        or content_type.startswith("video/")
+        or suffix in supported_extensions
     ):
         raise HTTPException(
             status_code=400,
@@ -159,7 +176,7 @@ async def transcribe_voice(file: UploadFile = File(...)):
             detail="The audio recording is empty."
         )
 
-    suffix = Path(file.filename or "voice.webm").suffix or ".webm"
+    suffix = suffix or ".webm"
     temp_path = None
 
     try:
@@ -173,18 +190,19 @@ async def transcribe_voice(file: UploadFile = File(...)):
         audio = decode_audio(temp_path)
         duration, rms, peak = get_audio_stats(audio)
 
-        print("\n========== AUDIO DEBUG ==========")
-        print("Duration:", round(duration, 2), "seconds")
-        print("RMS:", rms)
-        print("Peak:", peak)
-        print("File:", file.filename)
-        print("Content type:", file.content_type)
-        print("=================================\n")
+        print(
+            f"VOICE AUDIO: duration={duration:.2f}s, "
+            f"rms={rms:.6f}, peak={peak:.6f}, "
+            f"file={filename}, type={content_type}"
+        )
 
         if duration < 0.8:
             raise HTTPException(
                 status_code=400,
-                detail="Recording is too short. Please speak for at least 2 seconds."
+                detail=(
+                    "Recording is too short. "
+                    "Please speak for at least 2 seconds."
+                )
             )
 
         if rms < 0.003 or peak < 0.02:
@@ -198,49 +216,29 @@ async def transcribe_voice(file: UploadFile = File(...)):
 
         model = get_model()
 
-        # Detect the language first.
-        # Transcription segments must be consumed for inference to run.
-        detect_segments, detect_info = model.transcribe(
-            audio,
-            task="transcribe",
-            beam_size=1,
-            temperature=0,
-            vad_filter=True,
-            without_timestamps=True,
-            condition_on_previous_text=False
+        print("Starting single-pass voice transcription...")
+
+        transcript, detected_language, language_probability = (
+            transcribe_audio(model, audio)
         )
 
-        # Consume the detection pass, then use its language metadata.
-        for _ in detect_segments:
-            pass
-
-        detected_language = detect_info.language or "unknown"
-        language_probability = float(
-            detect_info.language_probability or 0
+        print(
+            f"VOICE RESULT: language={detected_language}, "
+            f"probability={language_probability:.4f}, "
+            f"transcript_length={len(transcript)}"
         )
-
-        print("Detected language:", detected_language)
-        print("Language probability:", language_probability)
-
-        # Select Telugu when Whisper detects Telugu.
-        # Otherwise use English.
-        final_language = (
-            "te" if detected_language == "te" else "en"
-        )
-
-        transcript, _ = transcribe_audio(
-            model,
-            audio,
-            language=final_language
-        )
-
-        transcript = transcript.strip()
 
         if not transcript:
             raise HTTPException(
                 status_code=400,
                 detail="No clear speech was detected. Please speak again."
             )
+
+        # The app supports Telugu and English responses.
+        # Preserve the detected language in the API response.
+        final_language = (
+            "te" if detected_language == "te" else "en"
+        )
 
         language_name = (
             "Telugu" if final_language == "te" else "English"
@@ -252,7 +250,9 @@ async def transcribe_voice(file: UploadFile = File(...)):
             "detected_language": final_language,
             "language_name": language_name,
             "response_language": final_language,
-            "language_probability": round(language_probability, 4),
+            "language_probability": round(
+                language_probability, 4
+            ),
             "audio_duration": round(duration, 2),
             "audio_rms": round(rms, 6),
             "audio_peak": round(peak, 6)
@@ -273,8 +273,10 @@ async def transcribe_voice(file: UploadFile = File(...)):
         if temp_path:
             try:
                 Path(temp_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                print("TEMP FILE CLEANUP WARNING:", repr(exc))
+
+        await file.close()
 
 
 class SpeakRequest(BaseModel):
@@ -319,7 +321,10 @@ def _make_speech_response(text: str, language: str):
 
         raise HTTPException(
             status_code=502,
-            detail="Could not generate speech. Check your internet connection."
+            detail=(
+                "Could not generate speech. "
+                "Check your internet connection."
+            )
         )
 
 
