@@ -146,11 +146,24 @@ export default function VoiceAssistant({language}) {
         method: "POST",
         body: formData,
       });
-      const voiceData = await voiceResponse.json();
+      
+      const responseText = await voiceResponse.text();
 
-      if (!voiceResponse.ok) {
-        throw new Error(voiceData.detail || "Voice transcription failed.");
-      }
+let voiceData = {};
+try {
+  voiceData = responseText ? JSON.parse(responseText) : {};
+} catch {
+  voiceData = {};
+}
+
+if (!voiceResponse.ok) {
+  throw new Error(
+    voiceData.detail ||
+    `Voice transcription failed (HTTP ${voiceResponse.status}). ` +
+    (responseText || "The server returned an empty error response.")
+  );
+}
+      
 
       console.log("VOICE RESULT:", voiceData);
       setTranscript(voiceData.transcript || "");
