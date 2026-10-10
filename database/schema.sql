@@ -1,0 +1,36 @@
+CREATE DATABASE IF NOT EXISTS smart_crop;
+USE smart_crop;
+
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    email VARCHAR(180) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS recommendations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    n DOUBLE NOT NULL,
+    p DOUBLE NOT NULL,
+    k DOUBLE NOT NULL,
+    temperature DOUBLE NOT NULL,
+    humidity DOUBLE NOT NULL,
+    ph DOUBLE NOT NULL,
+    rainfall DOUBLE NOT NULL,
+    recommended_crop VARCHAR(100) NOT NULL,
+    confidence DOUBLE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS crop_health (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    ndvi DOUBLE NOT NULL,
+    health_status VARCHAR(30) NOT NULL,
+    note VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

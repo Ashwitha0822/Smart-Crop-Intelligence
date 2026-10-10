@@ -1,0 +1,52 @@
+SMART CROP INTELLIGENCE - PEST MODEL EVALUATION
+======================================================================
+
+Overall Accuracy: 61.00%
+
+Classification Report
+======================================================================
+                                 precision    recall  f1-score   support
+
+               rice leaf roller     0.7015    0.5875    0.6395        80
+             asiatic rice borer     0.3168    0.4000    0.3536        80
+              yellow rice borer     0.5484    0.6375    0.5896        80
+                rice gall midge     0.7067    0.6625    0.6839        80
+             brown plant hopper     0.3205    0.3125    0.3165        80
+      white backed plant hopper     0.4151    0.2750    0.3308        80
+       small brown plant hopper     0.3504    0.5125    0.4162        80
+              rice water weevil     0.5616    0.5125    0.5359        80
+                     corn borer     0.5303    0.4375    0.4795        80
+                      army worm     0.4270    0.4750    0.4497        80
+              Viteus vitifoliae     0.7042    0.6250    0.6623        80
+                    Ampelophaga     0.7083    0.8500    0.7727        80
+        Icerya purchasi Maskell     0.7901    0.8000    0.7950        80
+             Unaspis yanonensis     0.6667    0.7000    0.6829        80
+       Aleurocanthus spiniferus     0.8714    0.7625    0.8133        80
+  Tetradacus c Bactrocera minax     0.8378    0.7750    0.8052        80
+Phyllocnistis citrella Stainton     0.6437    0.7000    0.6707        80
+    Aphis citricola Vander Goot     0.7722    0.7625    0.7673        80
+     Rhytidodera bowrinii white     0.8169    0.7250    0.7682        80
+          Sternochetus frigidus     0.7333    0.6875    0.7097        80
+
+                       accuracy                         0.6100      1600
+                      macro avg     0.6212    0.6100    0.6121      1600
+                   weighted avg     0.6212    0.6100    0.6121      1600
+
+
+Most Confused Class Pairs
+======================================================================
+white backed plant hopper -> small brown plant hopper : 23
+asiatic rice borer -> yellow rice borer : 21
+brown plant hopper -> small brown plant hopper : 17
+small brown plant hopper -> brown plant hopper : 14
+white backed plant hopper -> brown plant hopper : 14
+yellow rice borer -> asiatic rice borer : 14
+army worm -> corn borer : 12
+corn borer -> army worm : 11
+rice leaf roller -> asiatic rice borer : 11
+brown plant hopper -> asiatic rice borer : 10
+army worm -> asiatic rice borer : 9
+brown plant hopper -> white backed plant hopper : 9
+Unaspis yanonensis -> Icerya purchasi Maskell : 8
+rice water weevil -> Sternochetus frigidus : 8
+Aleurocanthus spiniferus -> Unaspis yanonensis : 7

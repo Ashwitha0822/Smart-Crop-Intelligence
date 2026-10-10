@@ -1,0 +1,55 @@
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# React and Node.js
+node_modules/
+dist/
+
+# Logs and operating system files
+*.log
+.DS_Store
+Thumbs.db
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Kaggle credentials
+kaggle.json
+
+# Test and cache files
+.pytest_cache/
+.mypy_cache/
+
+# Downloaded datasets
+data/*.zip
+data/kaggle_download/
+
+# Python environment and build files
+.python-version
+build/
+*.egg-info/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Environment secrets
+.env.local
+.env.production
+
+# Large image datasets - keep locally, do not upload to GitHub
+data/disease/
+data/pest/
+
+
