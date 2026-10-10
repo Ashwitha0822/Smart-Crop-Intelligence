@@ -13,16 +13,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://smart-crop-intelligence-nine.vercel.app",
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
-)
-
 app.include_router(auth.router)
 app.include_router(recommendation.router)
 app.include_router(health.router)
@@ -38,3 +28,15 @@ app.include_router(voice.router)
 @app.get("/")
 def root():
     return {"message": "Smart Crop Intelligence API is running"}
+
+
+# Apply CORS around the complete application.
+app = CORSMiddleware(
+    app=app,
+    allow_origins=[
+        "https://smart-crop-intelligence-nine.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
