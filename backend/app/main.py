@@ -10,7 +10,18 @@ from backend.app.routes import research
 from backend.app.routes import voice
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Smart Crop Intelligence API", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "https://smart-crop-intelligence-nine.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth.router); app.include_router(recommendation.router); app.include_router(health.router); app.include_router(weather.router)
 app.include_router(
     disease.router
