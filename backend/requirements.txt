@@ -16,3 +16,4 @@ email-validator
 pyproj
 tensorflow
 Pillow
+tavily-python
