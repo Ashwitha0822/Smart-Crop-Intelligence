@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const API = "https://smart-crop-intelligence.onrender.com";
+const API_BASE = "https://smart-crop-intelligence.onrender.com";
 
 function ResearchAssistant({ language = "en" }) {
   const isTelugu = language === "te";
