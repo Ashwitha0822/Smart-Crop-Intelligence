@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "http://127.0.0.1:8000";
-
+const API = "https://smart-crop-intelligence.onrender.com";
 const translations = {
   en: {
     title: "Crop Disease Detection",

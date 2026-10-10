@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { translations } from "../i18n/translations";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API = "https://smart-crop-intelligence.onrender.com";
 
 const normalizeSpeechLanguage = (value) => {
   const normalized = String(value || "").trim().toLowerCase();

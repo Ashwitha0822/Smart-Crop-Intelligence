@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API = "https://smart-crop-intelligence.onrender.com";
 
 // Display translations only. The original English class names are still sent to the API.
 const PEST_NAMES_TE = {
