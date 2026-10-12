@@ -4,15 +4,36 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine
 from .routes import auth, recommendation, health, weather
-from backend.app.routes import disease, guidance, pest, pest_guidance, research, voice
+from backend.app.routes import (
+    disease,
+    guidance,
+    pest,
+    pest_guidance,
+    research,
+    voice,
+)
 
+# Create database tables
 Base.metadata.create_all(bind=engine)
 
+# Create FastAPI application
 app = FastAPI(
     title="Smart Crop Intelligence API",
     version="1.0.0",
 )
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://smart-crop-intelligence-nine.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register API routers
 app.include_router(auth.router)
 app.include_router(recommendation.router)
 app.include_router(health.router)
@@ -27,16 +48,6 @@ app.include_router(voice.router)
 
 @app.get("/")
 def root():
-    return {"message": "Smart Crop Intelligence API is running"}
-
-
-# Apply CORS around the complete application.
-app = CORSMiddleware(
-    app=app,
-    allow_origins=[
-        "https://smart-crop-intelligence-nine.vercel.app",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    return {
+        "message": "Smart Crop Intelligence API is running"
+    }
